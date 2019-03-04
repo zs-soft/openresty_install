@@ -1,0 +1,183 @@
+#脚本环境变量
+OPENRESTY_MAIN_VERSION=1.13.6
+OPENRESTY_SUB_VERSION=2
+
+
+function init_dir() {
+	#创建系统配置目录
+	if [ ! -d "/opt/server-conf" ];then
+		mkdir /opt/server-conf
+	fi
+	cd /opt/server-conf
+}
+
+function install_base_lib () {
+	#安装基础依赖库注意：错误：readline/readline.h：没有那个文件或目录解决方法
+	yum install -y unzip git wget make gcc gcc-c++ libtermcap-devel ncurses-devel libevent-devel readline-devel
+	#安装 openssl 环境
+	yum install -y openssl-devel.x86_64
+	yum install -y  pcre-devel.x86_64
+	yum install -y gperf
+	yum install -y protobuf-lite-devel.x86_64
+	yum install -y  e2fsprogs-devel  libuuid-deve
+	yum install -y boost-devel
+	yum install -y libuuid-devel
+}
+
+function install_lua() {
+	#下载lua5.1.5 安装lua5.1
+	if [ ! -f "lua-5.1.5.tar.gz" ];then
+		wget http://www.lua.org/ftp/lua-5.1.5.tar.gz
+	fi
+	
+	if [ -d "./lua-5.1.5" ];then
+		rm -rf ./lua-5.1.5
+	fi
+
+	tar -xzvf lua-5.1.5.tar.gz
+	cd lua-5.1.5
+	make linux && make install
+	cd ..
+}
+
+function install_lua_rocks() {
+	#下载luarocks 安装luarocks
+	if [ ! -f "luarocks-2.4.1.tar.gz" ];then
+		wget https://luarocks.org/releases/luarocks-2.4.1.tar.gz
+	fi
+	
+	if [ -d "./luarocks-2.4.1" ];then
+		rm -rf ./luarocks-2.4.1
+	fi
+
+	tar -zxvf luarocks-2.4.1.tar.gz
+	cd luarocks-2.4.1
+	./configure
+	make build && make install
+	cd ..
+}
+
+function install_drizzer() {
+	#安装 drizzer
+	if [ ! -f "drizzle7-2011.07.21.tar.gz" ];then
+		wget http://agentzh.org/misc/nginx/drizzle7-2011.07.21.tar.gz
+	fi
+	
+	if [ -d "./drizzle7-2011.07.21" ];then
+		rm -rf ./drizzle7-2011.07.21
+	fi
+
+	tar -zxvf drizzle7-2011.07.21.tar.gz
+	cd drizzle7-2011.07.21
+	./configure --without-server 
+	make libdrizzle-1.0
+	make install-libdrizzle-1.0
+	# libtool --finish /opt/drizzle/lib
+	#配置libdrizzle环境变量
+	if [ -f "/usr/lib/libdrizzle.so.1" ];then
+		rm -rf /usr/lib/libdrizzle.so.1
+	fi
+
+	if [ -f "/usr/lib64/libdrizzle.so.1" ];then
+		rm -rf /usr/lib64/libdrizzle.so.1
+	fi
+
+	ln -s /usr/local/lib/libdrizzle.so.1 /usr/lib/libdrizzle.so.1
+	ln -s /usr/local/lib/libdrizzle.so.1 /usr/lib64/libdrizzle.so.1
+	#cp /usr/lib/libdrizzle.so.1  /usr/lib64
+	cd ..
+}
+
+function install_openresty() {
+	# 1.0.2e 以上才支持http2 协议
+	if [ ! -f "openssl-1.0.2e.tar.gz" ];then
+		wget https://www.openssl.org/source/openssl-1.0.2e.tar.gz
+	fi
+	
+	if [ -d "./openssl-1.0.2e" ];then
+		rm -rf ./openssl-1.0.2e
+	fi
+	tar -zxvf openssl-1.0.2e.tar.gz
+
+	openresty_package=openresty-$OPENRESTY_MAIN_VERSION.$OPENRESTY_SUB_VERSION.tar.gz
+	openresty_dir=./openresty-$OPENRESTY_MAIN_VERSION.$OPENRESTY_SUB_VERSION
+	if [ ! -f $openresty_package ];then
+		wget https://openresty.org/download/openresty-$OPENRESTY_MAIN_VERSION.$OPENRESTY_SUB_VERSION.tar.gz
+	fi
+	
+	if [ -d $openresty_dir ];then
+		rm -rf $openresty_dir
+	fi
+	
+	tar -zxvf openresty-$OPENRESTY_MAIN_VERSION.$OPENRESTY_SUB_VERSION.tar.gz
+	cd openresty-$OPENRESTY_MAIN_VERSION.$OPENRESTY_SUB_VERSION
+	# 在文件 openresty-1.13.6.1/bundle/ngx_lua-0.10.11/src/ngx_http_lua_socket_tcp.c 第2871行 将 NGX_LOG_ERR 改为 NGX_LOG_DEBUG
+	./configure --prefix=/opt/openresty \
+	              --with-luajit \
+	              --with-http_iconv_module \
+	              --with-http_drizzle_module \
+	              --with-http_realip_module \
+	              --with-http_v2_module \
+	              --with-http_stub_status_module \
+		      --with-openssl=/opt/server-conf/openssl-1.0.2e			
+	gmake && gmake install
+	cd ..
+}
+
+function source_env () {
+	echo 'export PATH=$PATH:/opt/openresty/bin' >> ~/.bashrc
+	source ~/.bashrc
+}
+
+function install_src_lib () {
+	#安装drizzer
+	install_drizzer
+}
+
+function install_lua_libs () {
+	# linux 无需复制
+	#文件系统操作库lfs
+	luarocks install luafilesystem
+	#bit库
+	luarocks install luabitop
+	#template库 html相关
+	luarocks install lua-resty-template
+	#session 库
+	luarocks install lua-resty-session
+	#luacrypto库,各种加密
+	luarocks install luacrypto
+	# lua xml 
+	luarocks install lub
+	luarocks install lut
+	luarocks install xml
+	luarocks install xml2lua
+	luarocks install snowflake
+	luarocks install lua-resty-hmac
+	luarocks install lua-smtps
+	#安装http 通信 
+	luarocks install lua-resty-http
+	luarocks install lua-resty-jit-uuid
+
+	luarocks install uuidx
+	luarocks install lua-xlsxwriter
+}
+
+echo openresty_install start
+#创建安装包目录
+init_dir
+#安装系统依赖环境库
+install_base_lib
+#安装lua解释器
+install_lua
+#安装luarocks安装包管理器
+install_lua_rocks
+#库源码包安装
+install_src_lib
+#安装openresty
+install_openresty
+#安装lua库
+install_lua_libs
+#更改系统环境变量
+source_env
+
+echo openresty_install success
